@@ -158,8 +158,8 @@ function SplitDisplay.ShowBiomeSplits( screen, components, offsetY )
     local columnHeaders =
 	{
 		{ OffsetX = 0, Text = "Segment", Justification = "Left", },
-		{ OffsetX = 300, Text = "Game Time", Justification = "Right", },
-		{ OffsetX = 470, Text = "Real Time", Justification = "Right", },
+		{ OffsetX = 315, Text = "Game Time", Justification = "Right", },
+		{ OffsetX = 485, Text = "Real Time", Justification = "Right", },
 	}
 
     for k, header in ipairs( columnHeaders ) do
@@ -338,10 +338,10 @@ ModUtil.WrapBaseFunction("ShowRunClearScreen", function(baseFunc, ...)
 	local dataColor = {0.702, 0.620, 0.345, 1.0}
 	local newRecordColor = {1.000, 0.894, 0.231, 1.0}
 
-	-- ClearTime
+	-- ClearTime (IGT)
 	offsetY = offsetY + lineSpacingLarge
 	CreateTextBox({ Id = components.ShopBackground.Id,
-		Text = "RunClearScreen_ClearTime",
+		Text = "Game Time",
 		FontSize = mainFontSize,
 		OffsetX = messageOffsetX, OffsetY = offsetY,
 		Color = titleColor,
@@ -370,10 +370,14 @@ ModUtil.WrapBaseFunction("ShowRunClearScreen", function(baseFunc, ...)
 
 	wait(0.05)
 
-	-- Record Clear Time
+	-- Clear Time (RTA)
+	local rtaClearTime = "00:00.00"
+	if SplitDisplay.RunStartTime and SplitDisplay.Splits.Hades and SplitDisplay.Splits.Hades.RTA then
+		rtaClearTime = SplitDisplay.FormatElapsedTime(SplitDisplay.RunStartTime, SplitDisplay.Splits.Hades.RTA)
+	end
 	offsetY = offsetY + lineSpacingSmall
 	CreateTextBox({ Id = components.ShopBackground.Id,
-		Text = "RunClearScreen_ClearTimeRecord",
+		Text = "Real Time",
 		FontSize = mainFontSize,
 		OffsetX = messageOffsetX, OffsetY = offsetY,
 		Color = titleColor,
@@ -381,7 +385,7 @@ ModUtil.WrapBaseFunction("ShowRunClearScreen", function(baseFunc, ...)
 		ShadowBlur = 0, ShadowColor = {0,0,0,0}, ShadowOffset={0, 3},
 		Justification = "Left" })
 	CreateTextBox({ Id = components.ShopBackground.Id,
-		Text = GetTimerString( recordTime, 2 ),
+		Text = rtaClearTime,
 		FontSize = mainFontSize,
 		OffsetX = statOffsetX, OffsetY = offsetY,
 		Color = dataColor,
