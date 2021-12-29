@@ -32,6 +32,11 @@ SplitDisplay.MapLoadMapping = {
     C_PostBoss01 = "Elysium",
     D_Boss01 = "Temple of Styx",
 }
+SplitDisplay.RoomExitMapping = {
+	A_PreBoss01 = "FuryEntry",
+	B_PreBoss01 = "HydraEntry",
+	C_PreBoss01 = "HeroesEntry",
+}
 
 SplitDisplay.BiomeSplitNames = {
     "Tartarus",
@@ -107,6 +112,20 @@ ModUtil.WrapBaseFunction("LoadMap", function( baseFunc, argTable )
         end
     end
     baseFunc( argTable )
+end, SplitDisplay)
+
+-- Room Exit Splits for boss kill boss entry splits
+ModUtil.WrapBaseFunction("LeaveRoomPresentation", function( baseFunc, currentRun, exitDoor)
+	if SplitDisplay.config.Enabled then
+		local currentRoom = currentRun.CurrentRoom.Name
+
+		local split = SplitDisplay.RoomExitMapping[currentRoom]
+
+		if split then
+			SplitDisplay.Split(split, "BossKill")
+		end
+	end
+
 end, SplitDisplay)
 
 -- Styx Door Exit Split
