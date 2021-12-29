@@ -3,6 +3,8 @@ ModUtil.RegisterMod("SplitDisplay")
 local config = {
     Enabled = true,
     SplitType = "BossKill", -- valid values are "BossKill" or "RoomTransition"
+	RecordAspectPBs = true,
+	DetailedStats = true,
 }
 SplitDisplay.config = config
 
@@ -61,10 +63,10 @@ end, SplitDisplay)
 -- Split management
 
 function SplitDisplay.Split(splitName, splitType)
-	DebugPrint({Text="Split called"})
+	--DebugPrint({Text="Split called"})
 
     if splitType == SplitDisplay.config.SplitType or splitType == "Both" then
-		DebugPrint({Text="Split recorded"})
+		--DebugPrint({Text="Split recorded"})
 
         local splitRTA = GetTime({ }) -- - SplitDisplay.RunStartTime
         local splitIGT = CurrentRun.GameplayTime
@@ -142,6 +144,65 @@ function SplitDisplay.FormatElapsedTime(start_time, current_epoch)
     end
 
     return string.format("%02d:%02d:%02d.%02d", hours, minutes, seconds, centiseconds)
+end
+
+-- PB Tracking
+function SplitDisplay.UpdateSplitPBs()
+	if SplitDisplay.config.RecordAspectPBs then
+		local aspect = nil
+		for traitName, count in pairs(CurrentRun.TraitCache) do
+			if PassesTraitFilter("GameStats_Aspects", traitName) then
+				aspect = traitName
+			end
+		end
+		if aspect then
+			local splitRecords = {}
+			if GameState.SplitRecords then
+				splitRecords = DeepCopyTable(GameState.SplitRecords)
+			end
+			if not splitRecords[aspect] then
+				splitRecords[aspect] = {}
+			end
+			local startingTimes = { IGT = 0.0, RTA = SplitDisplay.RunStartTime }
+			for i, splitName in ipairs(SplitDisplay.BiomeSplitNames) do
+				local previousSplit = nil
+				if splitName == "Tartarus" then
+					previousSplit = startingTimes
+				else
+					previousSplit = SplitDisplay.Splits[SplitDisplay.BiomeSplitNames[i - 1]]
+				end
+
+				local IGTSplitTime = SplitDisplay.Splits[splitName].IGT - previousSplit.IGT
+
+				if splitRecords[aspect][splitName] and IGTSplitTime < splitRecords[aspect][splitName].IGT then
+					splitRecords[aspect][splitName].IGT = IGTSplitTime
+				end
+
+				local RTASplitTime = SplitDisplay.Splits[splitName].RTA - previousSplit.RTA
+
+				if splitRecords[aspect][splitName] and RTASplitTime < splitRecords[aspect][splitName].RTA then
+					splitRecords[aspect][splitName].RTA = RTASplitTime
+				end
+			end
+			for i, splitName in ipairs(SplitDisplay.BossSplitNames) do
+				if splitName ~= "Hades" then
+					local bossEntrySplit = SplitDisplay.Splits[splitName .. "Entry"]
+					local bossKillSplit = SplitDisplay.Splits[splitName]
+
+					local IGTBossTime = bossKillSplit.IGT - bossEntrySplit.IGT
+					if splitRecords[aspect][splitName] and IGTBossTime < splitRecords[aspect][splitName].IGT then
+						splitRecords[aspect][splitName].IGT = IGTBossTime
+					end
+
+					local RTABossTime = bossKillSplit.RTA - bossEntrySplit.RTA
+					if splitRecords[aspect][splitName] and RTABossTime < splitRecords[aspect][splitName].RTA then
+						splitRecords[aspect][splitName].RTA = RTABossTime
+					end
+				end
+			end
+			GameState.SplitRecords = splitRecords
+		end
+	end
 end
 
 -- Biome Split Display
@@ -545,7 +606,7 @@ ModUtil.WrapBaseFunction("ShowRunClearScreen", function(baseFunc, ...)
 		CurrentRun.RunClearMessage = message
 		RunClearMessagePresentation( screen, message )
 	end
-
+	SplitDisplay.UpdateSplitPBs()
 	HandleScreenInput( screen )
 
 end, SplitDisplay)
