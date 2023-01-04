@@ -1,10 +1,10 @@
 ModUtil.RegisterMod("SplitDisplay")
+local saveData = SplitDisplay.Data
 
 local config = {
     Enabled = true,
-    SplitType = "BossKill", -- valid values are "BossKill" or "RoomTransition"
 	RecordAspectPBs = true,
-	DetailedStats = true,
+	ShowSegments = false,
 }
 SplitDisplay.config = config
 
@@ -13,45 +13,78 @@ SplitDisplay.Splits = {}
 SplitDisplay.RunStartTime = 0
 
 SplitDisplay.BossKillMapping = {
-    A_Boss01 = "Tartarus",
-    A_Boss02 = "Tartarus",
-    A_Boss03 = "Tartarus",
-    B_Boss01 = "Asphodel",
-    B_Boss02 = "Asphodel",
-    C_Boss01 = "Elysium",
-}
-SplitDisplay.MapLoadMapping = {
-    A_Boss01 = "FuryEntry",
-    A_Boss02 = "FuryEntry",
-    A_Boss03 = "FuryEntry",
-    B_Boss01 = "HydraEntry",
-    B_Boss02 = "HydraEntry",
-    C_Boss01 = "HeroesEntry",
-    A_PostBoss01 = "Tartarus",
-    B_PostBoss01 = "Asphodel",
-    C_PostBoss01 = "Elysium",
-    D_Boss01 = "Temple of Styx",
+    A_Boss01 = "Megaera",
+    A_Boss02 = "Alecto",
+    A_Boss03 = "Tisiphone",
+    B_Boss01 = "Lernie",
+    B_Boss02 = "Lernie",
+    C_Boss01 = "Heroes",
 }
 SplitDisplay.RoomExitMapping = {
-	A_PreBoss01 = "FuryEntry",
-	B_PreBoss01 = "HydraEntry",
-	C_PreBoss01 = "HeroesEntry",
+	A_PreBoss01 = "Tartarus",
+	B_PreBoss01 = "Asphodel",
+	C_PreBoss01 = "Elysium",
+}
+SplitDisplay.FuryChecker = {
+	Megaera = true,
+	Alecto = true,
+	Tisiphone = true,
 }
 
-SplitDisplay.BiomeSplitNames = {
-    "Tartarus",
-    "Asphodel",
-    "Elysium",
-    "Temple of Styx",
-    "Hades"
-}
 
-SplitDisplay.BossSplitNames = {
-    "Fury",
-    "Lernie",
-    "Heroes",
-    "Hades",
+SplitDisplay.SplitDisplayOrder = {
+	"Tartarus",
+	"Fury",
+	"Asphodel",
+	"Lernie",
+	"Elysium",
+	"Heroes",
+	"Temple of Styx",
+	"Hades"
 }
+SplitDisplay.CurrentRunFury = nil
+
+-- -- testing mechanics
+-- OnControlPressed{ "Assist",
+-- 	function(triggerArgs)
+-- 		SplitDisplay.CurrentRunFury = "Megaera"
+-- 		SplitDisplay.Splits = {
+-- 			Tartarus = {
+-- 				IGT = 100,
+-- 				RTA = 200,
+-- 			},
+-- 			Megaera = {
+-- 				IGT = 150,
+-- 				RTA = 300,
+-- 			},
+-- 			Asphodel = {
+-- 				IGT = 350,
+-- 				RTA = 700,
+-- 			},
+-- 			Lernie = {
+-- 				IGT = 400,
+-- 				RTA = 800
+-- 			},
+-- 			Elysium = {
+-- 				IGT = 500,
+-- 				RTA = 1000,
+-- 			},
+-- 			Heroes = {
+-- 				IGT = 550,
+-- 				RTA = 1100,
+-- 			},
+-- 			["Temple of Styx"] = {
+-- 				IGT = 600,
+-- 				RTA = 1200,
+-- 			},
+-- 			Hades = {
+-- 				IGT = 650,
+-- 				RTA = 1300
+-- 			}
+-- 		}
+
+-- 		ShowRunClearScreen()
+-- end}
 
 -- Run Start 
 ModUtil.WrapBaseFunction("WindowDropEntrance", function( baseFunc, ... )
@@ -60,6 +93,7 @@ ModUtil.WrapBaseFunction("WindowDropEntrance", function( baseFunc, ... )
     if SplitDisplay.config.Enabled then
         SplitDisplay.RunStartTime = GetTime({ })
         SplitDisplay.Splits = {}
+		SplitDisplay.CurrentRunFury = nil
     end
 
     return val
@@ -67,20 +101,15 @@ end, SplitDisplay)
 
 -- Split management
 
-function SplitDisplay.Split(splitName, splitType)
-	--DebugPrint({Text="Split called"})
+function SplitDisplay.Split(splitName)
 
-    if splitType == SplitDisplay.config.SplitType or splitType == "Both" then
-		--DebugPrint({Text="Split recorded"})
+	local splitRTA = GetTime({ }) -- - SplitDisplay.RunStartTime
+	local splitIGT = CurrentRun.GameplayTime
 
-        local splitRTA = GetTime({ }) -- - SplitDisplay.RunStartTime
-        local splitIGT = CurrentRun.GameplayTime
-
-        SplitDisplay.Splits[splitName] = {
-            IGT = splitIGT,
-            RTA = splitRTA,
-        }
-    end
+	SplitDisplay.Splits[splitName] = {
+		IGT = splitIGT,
+		RTA = splitRTA,
+	}
 end
 
 -- Boss Kill Splits
@@ -88,7 +117,10 @@ ModUtil.WrapBaseFunction("HarpyKillPresentation", function( baseFunc, ... )
     if SplitDisplay.config.Enabled then
         local split = SplitDisplay.BossKillMapping[CurrentRun.CurrentRoom.Name]
         if split then
-            SplitDisplay.Split(split, "BossKill")
+			if SplitDisplay.FuryChecker[split] then
+				SplitDisplay.CurrentRunFury =  split
+			end
+            SplitDisplay.Split(split)
         end
     end
     baseFunc( ... )
@@ -96,42 +128,44 @@ end, SplitDisplay)
 
 ModUtil.WrapBaseFunction("HadesKillPresentation", function( baseFunc, ... )
     if SplitDisplay.config.Enabled then
-        SplitDisplay.Split("Hades", "Both")
+        SplitDisplay.Split("Hades")
     end
     baseFunc( ... )
-end, SplitDisplay)
-
--- Standard Room Entrance Splits
-ModUtil.WrapBaseFunction("LoadMap", function( baseFunc, argTable )
-    if SplitDisplay.config.Enabled then
-        local newRoom = argTable.Name
-        local split = SplitDisplay.MapLoadMapping[newRoom]
-
-        if split then
-            SplitDisplay.Split(split, "RoomTransition")
-        end
-    end
-    baseFunc( argTable )
 end, SplitDisplay)
 
 -- Room Exit Splits for boss kill boss entry splits
 ModUtil.WrapBaseFunction("LeaveRoomPresentation", function( baseFunc, currentRun, exitDoor)
 	if SplitDisplay.config.Enabled then
 		local currentRoom = currentRun.CurrentRoom.Name
-
+		SplitDisplay.ExitingRoom = currentRoom
 		local split = SplitDisplay.RoomExitMapping[currentRoom]
 
 		if split then
-			SplitDisplay.Split(split, "BossKill")
+			SplitDisplay.Split(split)
 		end
 	end
+	baseFunc(currentRun, exitDoor)
+
+end, SplitDisplay)
+
+ModUtil.WrapBaseFunction("AsphodelLeaveRoomPresentation", function( baseFunc, currentRun, exitDoor)
+	if SplitDisplay.config.Enabled then
+		local currentRoom = currentRun.CurrentRoom.Name
+		SplitDisplay.ExitingRoom = currentRoom
+		local split = SplitDisplay.RoomExitMapping[currentRoom]
+
+		if split then
+			SplitDisplay.Split(split)
+		end
+	end
+	baseFunc(currentRun, exitDoor)
 
 end, SplitDisplay)
 
 -- Styx Door Exit Split
 ModUtil.WrapBaseFunction("ExitToHadesPresentation", function( baseFunc, ... ) 
     if SplitDisplay.config.Enabled then
-       SplitDisplay.Split("Temple of Styx", "BossKill")
+       SplitDisplay.Split("Temple of Styx")
     end
     baseFunc( ... )
 end, SplitDisplay)
@@ -176,19 +210,27 @@ function SplitDisplay.UpdateSplitPBs()
 		end
 		if aspect then
 			local splitRecords = {}
-			if GameState.SplitRecords then
-				splitRecords = DeepCopyTable(GameState.SplitRecords)
+			if saveData.SplitRecords then
+				splitRecords = DeepCopyTable(saveData.SplitRecords)
 			end
 			if not splitRecords[aspect] then
 				splitRecords[aspect] = {}
 			end
 			local startingTimes = { IGT = 0.0, RTA = SplitDisplay.RunStartTime }
-			for i, splitName in ipairs(SplitDisplay.BiomeSplitNames) do
+			for i, splitName in ipairs(SplitDisplay.SplitDisplayOrder) do
 				local previousSplit = nil
 				if splitName == "Tartarus" then
 					previousSplit = startingTimes
 				else
-					previousSplit = SplitDisplay.Splits[SplitDisplay.BiomeSplitNames[i - 1]]
+					local previousSplitName = SplitDisplay.SplitDisplayOrder[i - 1]
+					if previousSplitName == "Fury" then
+						previousSplitName = SplitDisplay.CurrentRunFury
+					end
+					previousSplit = SplitDisplay.Splits[previousSplitName]
+				end
+
+				if splitName == "Fury" then
+					splitName = SplitDisplay.CurrentRunFury
 				end
 
 				local IGTSplitTime = SplitDisplay.Splits[splitName].IGT - previousSplit.IGT
@@ -203,32 +245,16 @@ function SplitDisplay.UpdateSplitPBs()
 					splitRecords[aspect][splitName].RTA = RTASplitTime
 				end
 			end
-			for i, splitName in ipairs(SplitDisplay.BossSplitNames) do
-				if splitName ~= "Hades" then
-					local bossEntrySplit = SplitDisplay.Splits[splitName .. "Entry"]
-					local bossKillSplit = SplitDisplay.Splits[splitName]
-
-					local IGTBossTime = bossKillSplit.IGT - bossEntrySplit.IGT
-					if splitRecords[aspect][splitName] and IGTBossTime < splitRecords[aspect][splitName].IGT then
-						splitRecords[aspect][splitName].IGT = IGTBossTime
-					end
-
-					local RTABossTime = bossKillSplit.RTA - bossEntrySplit.RTA
-					if splitRecords[aspect][splitName] and RTABossTime < splitRecords[aspect][splitName].RTA then
-						splitRecords[aspect][splitName].RTA = RTABossTime
-					end
-				end
-			end
-			GameState.SplitRecords = splitRecords
 		end
+		saveData.SplitRecords = splitRecords
 	end
 end
 
 -- Biome Split Display
 function SplitDisplay.ShowBiomeSplits( screen, components, offsetY )
-    local lineSpacingLarge = 55
-	local lineSpacingSmall = 35
-    local mainFontSize = 19
+    local lineSpacingLarge = 35
+	local lineSpacingSmall = 30
+    local mainFontSize = 17
 	local titleColor = Color.White
 	local dataColor = {0.702, 0.620, 0.345, 1.0}
 	local newRecordColor = {1.000, 0.894, 0.231, 1.0}
@@ -245,7 +271,7 @@ function SplitDisplay.ShowBiomeSplits( screen, components, offsetY )
     for k, header in ipairs( columnHeaders ) do
 		CreateTextBox({ Id = components.ShopBackground.Id,
 				Text = header.Text,
-				FontSize = mainFontSize,
+				FontSize = mainFontSize + 1,
 				OffsetX = messageOffsetX + header.OffsetX, OffsetY = offsetY,
 				Color = Color.White,
 				Font = "AlegreyaSansSCExtraBold",
@@ -257,8 +283,11 @@ function SplitDisplay.ShowBiomeSplits( screen, components, offsetY )
 
     local startingTimes = { IGT = 0.0, RTA = SplitDisplay.RunStartTime }
 
-    for i, splitName in ipairs(SplitDisplay.BiomeSplitNames) do
+    for i, splitName in ipairs(SplitDisplay.SplitDisplayOrder) do
         -- split names
+		if splitName == "Fury" then
+			splitName = SplitDisplay.CurrentRunFury
+		end
         CreateTextBox({ Id = components.ShopBackground.Id,
                 Text = splitName,
                 FontSize = mainFontSize,
@@ -271,6 +300,11 @@ function SplitDisplay.ShowBiomeSplits( screen, components, offsetY )
         local igtSplit = "00:00:00"
         local rtaSplit = "00:00:00"
 
+		local offsetMultiplier = 0
+		if SplitDisplay.config.ShowSegments then
+			offsetMultiplier = 1
+		end
+
         if splitName == "Tartarus" then
             if SplitDisplay.Splits[splitName] and SplitDisplay.Splits[splitName].IGT then
                 igtSplit = GetTimerString(SplitDisplay.Splits[splitName].IGT - startingTimes.IGT, 2)
@@ -279,12 +313,18 @@ function SplitDisplay.ShowBiomeSplits( screen, components, offsetY )
                 rtaSplit = SplitDisplay.FormatElapsedTime(startingTimes.RTA, SplitDisplay.Splits[splitName].RTA)
             end
         else
-            local previousSplit = SplitDisplay.BiomeSplitNames[i - 1]
+            local previousSplit = SplitDisplay.SplitDisplayOrder[i - 1]
+			if previousSplit == "Fury" then
+				previousSplit = SplitDisplay.CurrentRunFury
+			end
 			if SplitDisplay.Splits[splitName] and SplitDisplay.Splits[splitName].IGT and previousSplit and  SplitDisplay.Splits[previousSplit] and SplitDisplay.Splits[previousSplit].IGT then
-                igtSplit = GetTimerString(SplitDisplay.Splits[splitName].IGT - SplitDisplay.Splits[previousSplit].IGT, 2)
+                igtSplit = GetTimerString(SplitDisplay.Splits[splitName].IGT - offsetMultiplier*SplitDisplay.Splits[previousSplit].IGT, 2)
             end
             if SplitDisplay.Splits[splitName] and SplitDisplay.Splits[splitName].RTA and previousSplit and  SplitDisplay.Splits[previousSplit] and SplitDisplay.Splits[previousSplit].RTA then
-                rtaSplit = SplitDisplay.FormatElapsedTime(SplitDisplay.Splits[previousSplit].RTA, SplitDisplay.Splits[splitName].RTA)
+                rtaSplit = SplitDisplay.FormatElapsedTime(
+					offsetMultiplier*SplitDisplay.Splits[previousSplit].RTA + (1-offsetMultiplier)*startingTimes.RTA,
+					SplitDisplay.Splits[splitName].RTA
+				)
             end
         end
 
@@ -313,8 +353,7 @@ function SplitDisplay.ShowBiomeSplits( screen, components, offsetY )
         wait(0.03)
     end
      
-    SplitDisplay.SplitsShown = "BiomeSplits"
-    return offsetY + ( lineSpacingSmall * 1.1 )
+    return offsetY - ( lineSpacingSmall * 0.6 )
 end
 
 -- function SplitDisplay.HideBiomeSplits( screen )
